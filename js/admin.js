@@ -12,13 +12,18 @@
   const btnStopScan = document.getElementById('btnStopScan');
   const preview = document.getElementById('preview');
   const scanMsg = document.getElementById('scanMsg');
-  const qrCount = document.getElementById('qrCount');
-  const btnGenQRs = document.getElementById('btnGenQRs');
-  const btnPrint = document.getElementById('btnPrint');
-  const qrWrap = document.getElementById('qrWrap');
+
+  const checkToken = document.getElementById('checkToken');
+  const btnCheck = document.getElementById('btnCheck');
+  const btnScanCheck = document.getElementById('btnScanCheck');
+  const btnStopScanCheck = document.getElementById('btnStopScanCheck');
+  const previewCheck = document.getElementById('previewCheck');
+  const checkMsg = document.getElementById('checkMsg');
+  const checkResult = document.getElementById('checkResult');
 
   envNote.textContent = location.hostname;
 
+  // --- Settings ---
   async function getSettings(){
     const { data } = await sb.from('settings').select('*').limit(1).single();
     return data;
@@ -26,13 +31,9 @@
   async function upsertSettings(patch){
     const existing = await getSettings();
     if (!existing){
-      const { data, error } = await sb.from('settings').insert({ id: 1, ...patch }).select().single();
-      if (error) console.error(error);
-      return data;
+      await sb.from('settings').insert({ id: 1, ...patch });
     } else {
-      const { data, error } = await sb.from('settings').update(patch).eq('id', existing.id).select().single();
-      if (error) console.error(error);
-      return data;
+      await sb.from('settings').update(patch).eq('id', existing.id);
     }
   }
 
@@ -49,9 +50,9 @@
     renderSettings(s);
   }
   refresh();
-  try {
-    sb.channel('realtime:settings').on('postgres_changes', { event:'*', schema:'public', table:'settings' }, refresh).subscribe();
-  } catch(e){}
+  sb.channel('realtime:settings').on('postgres_changes',
+    { event:'*', schema:'public', table:'settings' },
+    refresh).subscribe();
 
   btnOn.onclick = () => upsertSettings({ display_on: true });
   btnOff.onclick = () => upsertSettings({ display_on: false });
@@ -61,207 +62,99 @@
   };
   btnClearManual.onclick = () => upsertSettings({ manual_minutes: null });
 
-  // --- Scanner (pairing) ---
+  // --- Scanner using jsQR ---
   let stream = null;
   let rafId = null;
   let scanning = false;
-  let barcodeDetector = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
 
-  async function startCamera(){
-    try{
+  async function startCamera(videoEl, onDecoded, msgEl){
+    try {
       stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      preview.srcObject = stream;
-      await preview.play();
+      videoEl.srcObject = stream;
+      await videoEl.play();
       scanning = true;
-      scanMsg.textContent = "Scanning… point the camera at a QR code";
-      tick();
-    }catch(e){
+      msgEl.textContent = "Scanning… point at a QR";
+      tick(videoEl, onDecoded, msgEl);
+    } catch (e) {
       console.error(e);
-      scanMsg.textContent = "Camera failed. On iOS Safari, allow camera access.";
+      msgEl.textContent = "Camera failed. Allow camera access.";
     }
   }
-  function stopCamera(){
+
+  function stopCamera(videoEl, msgEl){
     scanning = false;
     if (rafId) cancelAnimationFrame(rafId);
-    if (preview) preview.pause();
+    if (videoEl) videoEl.pause();
     if (stream){ stream.getTracks().forEach(t=>t.stop()); }
-    scanMsg.textContent = "Camera stopped.";
+    msgEl.textContent = "Camera stopped.";
   }
-  btnStartScan.onclick = startCamera;
-  btnStopScan.onclick = stopCamera;
+
+  function tick(videoEl, onDecoded, msgEl){
+    if (!scanning) return;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = videoEl.videoWidth;
+    canvas.height = videoEl.videoHeight;
+    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    if (code) {
+      const token = (code.data || '').trim();
+      if (token) {
+        scanning = false;
+        stopCamera(videoEl, msgEl);
+        onDecoded(token);
+        return;
+      }
+    }
+    rafId = requestAnimationFrame(() => tick(videoEl, onDecoded, msgEl));
+  }
 
   async function handleDecoded(token){
     scanMsg.textContent = "Scanned: " + token + " — saving…";
     const { data, error } = await sb.rpc('record_scan', { p_token: token });
     if (error){
       console.error(error);
-      scanMsg.textContent = "Error saving scan. Try again.";
+      scanMsg.textContent = "Error saving scan.";
     } else {
       if (data && data.completed){
         const mins = Math.round((data.duration_seconds||0)/60);
-        scanMsg.textContent = "Handoff completed for " + token + ". Duration: " + mins + " min.";
+        scanMsg.textContent = "Completed handoff. Duration: " + mins + " min";
       } else {
-        scanMsg.textContent = "Started handoff for " + token + ". Hand this ticket to the guest.";
+        scanMsg.textContent = "Started new handoff.";
       }
     }
   }
 
-  async function tick(){
-    if (!scanning) return;
-    if (barcodeDetector){
-      try{
-        const barcodes = await barcodeDetector.detect(document.getElementById('preview'));
-        if (barcodes && barcodes.length){
-          const token = (barcodes[0].rawValue || '').trim();
-          if (token){
-            scanning = false;
-            await handleDecoded(token);
-            scanning = true;
-          }
-        }
-      }catch(e){}
-    }
-    rafId = requestAnimationFrame(tick);
-  }
+  btnStartScan.onclick = () => startCamera(preview, handleDecoded, scanMsg);
+  btnStopScan.onclick = () => stopCamera(preview, scanMsg);
 
-  // --- QR generation & print (optional fallback cards) ---
-  function makeId(n){ return 'QT-' + String(n).padStart(3,'0'); }
-  async function generate(){
-    qrWrap.innerHTML = '';
-    const count = Math.max(1, Math.min(60, parseInt(qrCount.value,10)||12));
-    for (let i=1;i<=count;i++){
-      const id = makeId(i);
-      const div = document.createElement('div');
-      div.className = 'qr';
-      const canvas = document.createElement('canvas');
-      div.appendChild(canvas);
-      const small = document.createElement('small');
-      small.textContent = id;
-      div.appendChild(small);
-      qrWrap.appendChild(div);
-      await QRCode.toCanvas(canvas, id, { width: 320, margin: 2 });
-    }
-    window.print();
-  }
-  btnGenQRs.onclick = generate;
-  btnPrint.onclick = () => window.print();
-})();
-
-// ===== Wait Time Checker =====
-;(function(){
-  const sb = window.supabaseClient;
-  const checkToken = document.getElementById('checkToken');
-  const btnCheck = document.getElementById('btnCheck');
-  const btnScanCheck = document.getElementById('btnScanCheck');
-  const btnStopScanCheck = document.getElementById('btnStopScanCheck');
-  const previewCheck = document.getElementById('previewCheck');
-  const checkMsg = document.getElementById('checkMsg');
-  const checkResult = document.getElementById('checkResult');
-
-  let streamC = null;
-  let rafIdC = null;
-  let scanningC = false;
-  let barcodeDetectorC = ('BarcodeDetector' in window) ? new BarcodeDetector({ formats: ['qr_code'] }) : null;
-
-  function fmt(ts){
-    if (!ts) return '—';
-    const d = new Date(ts);
-    return d.toLocaleString();
-  }
-  function fmtMin(sec){
-    if (!Number.isFinite(sec)) return '—';
-    return Math.round(sec/60) + ' min';
-  }
-
-  async function getStatus(token){
-    if (!token) return;
-    checkMsg.textContent = 'Looking up ' + token + '…';
-    let status = null, err = null;
-    try {
-      const { data, error } = await sb.rpc('get_ticket_status', { p_token: token });
-      if (error) err = error;
-      status = data;
-    } catch(e){ err = e; }
-    if (err || !status){
-      const { data: openRows } = await sb.from('handoffs')
-        .select('*')
-        .eq('token', token)
-        .is('end_time', null)
-        .order('start_time', { ascending: false })
-        .limit(1);
-      const { data: doneRows } = await sb.from('handoffs')
-        .select('*')
-        .eq('token', token)
-        .not('end_time', 'is', null)
-        .order('end_time', { ascending: false })
-        .limit(1);
-      const open = (openRows && openRows[0]) || null;
-      const last = (doneRows && doneRows[0]) || null;
-      if (open){
-        const elapsed = Math.floor((Date.now() - new Date(open.start_time).getTime())/1000);
-        status = { open: true, start_time: open.start_time, elapsed_seconds: elapsed };
-      } else if (last){
-        status = { open: false, start_time: last.start_time, end_time: last.end_time, duration_seconds: last.duration_seconds };
-      } else {
-        status = { not_found: true };
-      }
-    }
-
-    if (status.not_found){
-      checkMsg.textContent = 'No records for ' + token + '.';
-      checkResult.textContent = '';
-      return;
-    }
-    if (status.open){
-      checkMsg.textContent = 'Ticket ' + token + ' is currently in progress.';
-      checkResult.innerHTML = 'Started: ' + fmt(status.start_time) + ' • Elapsed: ' + fmtMin(status.elapsed_seconds);
-      return;
-    }
-    checkMsg.textContent = 'Ticket ' + token + ' completed.';
-    checkResult.innerHTML = 'Start: ' + fmt(status.start_time) + ' • End: ' + fmt(status.end_time) + ' • Duration: ' + fmtMin(status.duration_seconds);
-  }
-
-  async function startCam(){
-    try{
-      streamC = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      previewCheck.srcObject = streamC;
-      await previewCheck.play();
-      scanningC = true;
-      checkMsg.textContent = 'Scan a ticket QR…';
-      tick();
-    }catch(e){
-      console.error(e);
-      checkMsg.textContent = 'Camera failed. Allow camera access.';
+  // --- Wait Time Checker ---
+  async function checkTicket(token){
+    checkMsg.textContent = "Checking…";
+    const { data, error } = await sb.rpc('get_ticket_status', { p_token: token });
+    if (error){ checkMsg.textContent = "Error checking"; return; }
+    if (data.not_found){ checkMsg.textContent = "No record for " + token; return; }
+    if (data.open){
+      const mins = Math.round((data.elapsed_seconds||0)/60);
+      checkMsg.textContent = "";
+      checkResult.textContent = "In progress, elapsed: " + mins + " min";
+    } else {
+      const mins = Math.round((data.duration_seconds||0)/60);
+      checkMsg.textContent = "";
+      checkResult.textContent = "Completed, duration: " + mins + " min";
     }
   }
-  function stopCam(){
-    scanningC = false;
-    if (rafIdC) cancelAnimationFrame(rafIdC);
-    if (previewCheck) previewCheck.pause();
-    if (streamC){ streamC.getTracks().forEach(t=>t.stop()); }
-    checkMsg.textContent = 'Camera stopped.';
-  }
-  async function tick(){
-    if (!scanningC) return;
-    if (barcodeDetectorC){
-      try{
-        const barcodes = await barcodeDetectorC.detect(previewCheck);
-        if (barcodes && barcodes.length){
-          const token = (barcodes[0].rawValue || '').trim();
-          if (token){
-            scanningC = false;
-            stopCam();
-            checkToken.value = token;
-            await getStatus(token);
-            return;
-          }
-        }
-      }catch(e){}
-    }
-    rafIdC = requestAnimationFrame(tick);
-  }
 
-  btnCheck && (btnCheck.onclick = () => getStatus(checkToken.value.trim()));
-  btnScanCheck && (btnScanCheck.onclick = startCam);
-  btnStopScanCheck && (btnStopScanCheck.onclick = stopCam);
+  btnCheck.onclick = () => {
+    const token = (checkToken.value||"").trim();
+    if (token) checkTicket(token);
+  };
+
+  btnScanCheck.onclick = () => startCamera(previewCheck, (token)=>{
+    checkToken.value = token;
+    checkTicket(token);
+  }, checkMsg);
+  btnStopScanCheck.onclick = () => stopCamera(previewCheck, checkMsg);
+
 })();
