@@ -24,14 +24,10 @@
     .status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;vertical-align:middle;margin-right:6px}
     .on{background:var(--ok)} .off{background:var(--danger)}
     video{width:100%;max-height:45vh;border-radius:12px;background:#000}
-    .qrgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
-    .qr{background:#fff;padding:8px;border-radius:10px;text-align:center;color:#000}
-    .qr small{display:block;margin-top:6px}
     .help{font-size:13px;color:var(--muted);margin-top:6px}
   </style>
   <script src="/config.js" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js" defer></script>
   <script src="/js/supabaseClient.js" defer></script>
   <script src="/js/admin.js" defer></script>
 </head>
@@ -85,21 +81,6 @@
 
     <section class="card">
       <div class="row" style="justify-content:space-between;align-items:flex-start">
-        <div>
-          <b>Print QR Cards</b>
-          <div class="help">Optional: generate a batch of card IDs for fallback. Your ticket QRs work too.</div>
-        </div>
-        <div class="row">
-          <input id="qrCount" type="number" min="1" max="60" value="12">
-          <button id="btnGenQRs" class="primary">Generate</button>
-          <button id="btnPrint">Print</button>
-        </div>
-      </div>
-      <div id="qrWrap" class="qrgrid"></div>
-    </section>
-
-    <section class="card">
-      <div class="row" style="justify-content:space-between;align-items:flex-start">
         <div style="flex:1">
           <b>Wait Time Checker</b>
           <div class="help">Scan or type a ticket number to see this guest's wait. If still in line, you'll see current elapsed time.</div>
@@ -107,14 +88,4 @@
       </div>
       <div class="row" style="margin-top:10px;gap:8px">
         <input id="checkToken" type="text" placeholder="Enter ticket number (QR text)">
-        <button id="btnCheck" class="primary">Check</button>
-        <button id="btnScanCheck">Scan Ticket</button>
-        <button id="btnStopScanCheck">Stop</button>
-      </div>
-      <video id="previewCheck" playsinline muted></video>
-      <div id="checkMsg" class="help"></div>
-      <div id="checkResult" class="help" style="margin-top:8px"></div>
-    </section>
-  </main>
-</body>
-</html>
+        <button id="
