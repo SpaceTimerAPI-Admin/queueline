@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Queue Admin</title>
+  <style>
+    :root{--bg:#0b0f14;--card:#111926;--fg:#e6eef8;--muted:#9bb0c6;--accent:#58a6ff;--danger:#ff6b6b;--ok:#22c55e;}
+    *{box-sizing:border-box}
+    html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+    header{position:sticky;top:0;background:linear-gradient(180deg,rgba(17,25,38,.95),rgba(17,25,38,.75));backdrop-filter:blur(8px);padding:16px 14px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;justify-content:space-between;align-items:center;gap:12px;}
+    h1{margin:0;font-size:18px;letter-spacing:.3px}
+    main{padding:14px;display:grid;grid-template-columns:1fr;gap:14px;max-width:900px;margin:0 auto}
+    .card{background:var(--card);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:14px;box-shadow:0 8px 24px rgba(0,0,0,.25)}
+    .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    label{font-size:14px;color:var(--muted)}
+    input[type="number"], input[type="text"]{width:120px;padding:10px;border-radius:10px;border:1px solid rgba(255,255,255,.12);background:#0d1420;color:var(--fg);font-size:16px}
+    input[type="text"]{width:auto;flex:1;min-width:200px}
+    button{padding:12px 14px;border:0;border-radius:12px;background:#1a2536;color:var(--fg);font-weight:600;cursor:pointer}
+    button.primary{background:var(--accent);color:#04111f}
+    button.danger{background:var(--danger);color:#260808}
+    button.ok{background:var(--ok);color:#06230f}
+    .muted{color:var(--muted)}
+    .status-dot{width:10px;height:10px;border-radius:50%;display:inline-block;vertical-align:middle;margin-right:6px}
+    .on{background:var(--ok)} .off{background:var(--danger)}
+    video{width:100%;max-height:45vh;border-radius:12px;background:#000}
+    .qrgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+    .qr{background:#fff;padding:8px;border-radius:10px;text-align:center;color:#000}
+    .qr small{display:block;margin-top:6px}
+    .help{font-size:13px;color:var(--muted);margin-top:6px}
+  </style>
+  <script src="/config.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js" defer></script>
+  <script src="/js/supabaseClient.js" defer></script>
+  <script src="/js/admin.js" defer></script>
+</head>
+<body>
+  <header>
+    <h1>Queue Admin</h1>
+    <div class="muted" id="envNote"></div>
+  </header>
+  <main>
+    <section class="card">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div><span id="dispDot" class="status-dot off"></span><b>Display</b> <span id="dispState" class="muted">(off)</span></div>
+          <div class="help">Toggle whether the public display shows wait time.</div>
+        </div>
+        <div class="row">
+          <button id="btnDispOn" class="ok">Turn ON</button>
+          <button id="btnDispOff" class="danger">Turn OFF</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <b>Manual wait (minutes)</b>
+          <div class="help">Optional override shown on the display instead of calculated average.</div>
+        </div>
+        <div class="row">
+          <input id="manualVal" type="number" min="0" step="1" placeholder="e.g., 35">
+          <button id="btnSetManual" class="primary">Set</button>
+          <button id="btnClearManual">Clear</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div style="flex:1">
+          <b>Scan QR (pair start ↔ end)</b>
+          <div class="help">First scan starts a timer. Second scan of the same ticket ends it and logs the handoff.</div>
+        </div>
+        <div class="row">
+          <button id="btnStartScan" class="primary">Start Camera</button>
+          <button id="btnStopScan">Stop</button>
+        </div>
+      </div>
+      <video id="preview" playsinline muted></video>
+      <div id="scanMsg" class="help"></div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <b>Print QR Cards</b>
+          <div class="help">Optional: generate a batch of card IDs for fallback. Your ticket QRs work too.</div>
+        </div>
+        <div class="row">
+          <input id="qrCount" type="number" min="1" max="60" value="12">
+          <button id="btnGenQRs" class="primary">Generate</button>
+          <button id="btnPrint">Print</button>
+        </div>
+      </div>
+      <div id="qrWrap" class="qrgrid"></div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div style="flex:1">
+          <b>Wait Time Checker</b>
+          <div class="help">Scan or type a ticket number to see this guest's wait. If still in line, you'll see current elapsed time.</div>
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px;gap:8px">
+        <input id="checkToken" type="text" placeholder="Enter ticket number (QR text)">
+        <button id="btnCheck" class="primary">Check</button>
+        <button id="btnScanCheck">Scan Ticket</button>
+        <button id="btnStopScanCheck">Stop</button>
+      </div>
+      <video id="previewCheck" playsinline muted></video>
+      <div id="checkMsg" class="help"></div>
+      <div id="checkResult" class="help" style="margin-top:8px"></div>
+    </section>
+  </main>
+</body>
+</html>

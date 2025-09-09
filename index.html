@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Wait Time Display</title>
+  <style>
+    html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+    .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;text-align:center;gap:24px;}
+    .title{font-size:8vw;letter-spacing:0.04em;font-weight:700;line-height:1;}
+    .value{font-size:26vw;font-weight:800;line-height:0.9;}
+    .sub{opacity:.7;font-size:4vw;}
+    .off{opacity:.5}
+  </style>
+  <script src="/config.js" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" defer></script>
+  <script src="/js/supabaseClient.js" defer></script>
+  <script src="/js/display.js" defer></script>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Wait Time</div>
+    <div id="value" class="value">--</div>
+    <div id="note" class="sub"></div>
+  </div>
+</body>
+</html>
