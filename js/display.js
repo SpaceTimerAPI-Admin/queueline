@@ -1,6 +1,5 @@
 (async function(){
   const elVal = document.getElementById('value');
-  const elNote = document.getElementById('note');
   const sb = window.supabaseClient;
   if (!sb) return;
 
@@ -48,48 +47,4 @@
   }
 
   function render(settings, durations){
-    if (!settings || settings.display_on === false){
-      elVal.textContent = "--";
-      elNote.textContent = "Display is off";
-      elNote.classList.add('off');
-      return;
-    }
-    elNote.classList.remove('off');
-
-    if (settings.manual_minutes != null){
-      const raw = Math.max(0, Math.round(settings.manual_minutes));
-      const shown = applyToManual ? biasUp(raw) : raw;
-      elVal.textContent = String(shown);
-      elNote.textContent = applyToManual ? "Manual override (padded)" : "Manual override";
-      return;
-    }
-
-    const avg = computeAverage(durations);
-    if (avg == null){
-      elVal.textContent = "--";
-      elNote.textContent = "Waiting for data";
-      return;
-    }
-    const shown = biasUp(avg);
-    elVal.textContent = String(shown);
-    elNote.textContent = "Average (padded to 5s)";
-  }
-
-  async function refresh(){
-    const [settings, recent] = await Promise.all([fetchSettings(), fetchRecent()]);
-    render(settings, recent);
-  }
-
-  refresh();
-
-  try {
-    sb.channel('realtime:handoffs')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'handoffs' }, refresh)
-      .subscribe();
-    sb.channel('realtime:settings')
-      .on('postgres_changes', { event: '*', schema:'public', table:'settings' }, refresh)
-      .subscribe();
-  } catch(e){ console.warn('Realtime not available', e); }
-
-  setInterval(refresh, 30000);
-})();
+    if (!
